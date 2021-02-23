@@ -1,5 +1,5 @@
 /**
- *Submitted for verification at BscScan.com on 2021-02-11
+ *Submitted for verification at BscScan.com on xxxx-xx-xx
 */
 
 // Rowlet.finance Platform Token BEP20                                               
