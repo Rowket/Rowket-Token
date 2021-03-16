@@ -1,24 +1,31 @@
 /**
- *Submitted for verification at BscScan.com on xxxx-xx-xx
+ *Submitted for verification at BscScan.com on ---
 */
+
+/**
+
+
+
+ ________  ________  ___       __   ___  __    _______  _________   
+|\   __  \|\   __  \|\  \     |\  \|\  \|\  \ |\  ___ \|\___   ___\ 
+\ \  \|\  \ \  \|\  \ \  \    \ \  \ \  \/  /|\ \   __/\|___ \  \_| 
+ \ \   _  _\ \  \\\  \ \  \  __\ \  \ \   ___  \ \  \_|/__  \ \  \  
+  \ \  \\  \\ \  \\\  \ \  \|\__\_\  \ \  \\ \  \ \  \_|\ \  \ \  \ 
+   \ \__\\ _\\ \_______\ \____________\ \__\\ \__\ \_______\  \ \__\
+    \|__|\|__|\|_______|\|____________|\|__| \|__|\|_______|   \|__|
+                                                                    
+                                                                    
+                                                                
+// Rowket is the native Token of the Rowket.org NFT Marketplace
+
+// SPDX-License-Identifier: MIT
+
 
 /*
- ________  ________  ___       __   ___       _______  _________   
-|\   __  \|\   __  \|\  \     |\  \|\  \     |\  ___ \|\___   ___\ 
-\ \  \|\  \ \  \|\  \ \  \    \ \  \ \  \    \ \   __/\|___ \  \_| 
- \ \   _  _\ \  \\\  \ \  \  __\ \  \ \  \    \ \  \_|/__  \ \  \  
-  \ \  \\  \\ \  \\\  \ \  \|\__\_\  \ \  \____\ \  \_|\ \  \ \  \ 
-   \ \__\\ _\\ \_______\ \____________\ \_______\ \_______\  \ \__\
-    \|__|\|__|\|_______|\|____________|\|_______|\|_______|   \|__|
-                                                                   
-*/
-
-
-// Rowket.org Platform Token BEP20                                               
-//                                                 
-// TG: https://t.me/rowketcommunity
-// Web: https://rowket.org
-// SPDX-License-Identifier: MIT
+ * Telegram: https://t.me/rowketcommunity
+ * Website: https://rowket.org
+ */
+ 
 
 pragma solidity ^0.6.0;
 
@@ -466,7 +473,17 @@ contract Ownable is Context {
     }
 }
 
-contract Rowket is Getters, Setters, Context, IBEP20, Ownable {
+contract Rowket is Context, IBEP20, Ownable {
+
+    struct Transaction {
+        bool enabled;
+        address destination;
+        bytes data;
+    }
+
+    // Stable ordering is not guaranteed.
+    Transaction[] public transactions;
+
     using SafeMath for uint256;
     using Address for address;
 
@@ -491,14 +508,20 @@ contract Rowket is Getters, Setters, Context, IBEP20, Ownable {
     uint256 private _tFeeTotal;
     uint256 private _tBurnTotal;
     
-    uint256 private constant     _TAX_FEE = 200;
-    uint256 private constant    _BURN_FEE = 100;
+    uint256 private transferredTokens = 0;
+    uint256 private tokenBatchCount = 0;
+    uint256 private     _BURN_FEE = 100;
+    uint256 private     _TAX_FEE = 200;
     uint256 private constant _MAX_TX_SIZE = 500000 * _DECIMALFACTOR;
 
+    
     constructor () public {
         _rOwned[_msgSender()] = _rTotal;
         emit Transfer(address(0), _msgSender(), _tTotal);
     }
+
+
+    event TransactionFailed(address indexed destination, uint index, bytes data);
 
     function name() public view returns (string memory) {
         return _NAME;
@@ -590,7 +613,7 @@ contract Rowket is Getters, Setters, Context, IBEP20, Ownable {
     }
 
     function excludeAccount(address account) external onlyOwner() {
-        require(account != 0x05fF2B0DB69458A0750badebc4f9e13aDd608C7F, 'We can not exclude PancakeSwap router.');
+        require(account != 0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D, 'We can not exclude Uniswap router.');
         require(!_isExcluded[account], "Account is already excluded");
         if(_rOwned[account] > 0) {
             _tOwned[account] = tokenFromReflection(_rOwned[account]);
@@ -624,30 +647,26 @@ contract Rowket is Getters, Setters, Context, IBEP20, Ownable {
         require(sender != address(0), "BEP20: transfer from the zero address");
         require(recipient != address(0), "BEP20: transfer to the zero address");
         require(amount > 0, "Transfer amount must be greater than zero");
+    
         
         if(sender != owner() && recipient != owner())
             require(amount <= _MAX_TX_SIZE, "Transfer amount exceeds the maxTxAmount.");
-            
+
+    
         if (_isExcluded[sender] && !_isExcluded[recipient]) {
-            _transferFromExcluded(sender, recipient, amount, isTaxFree);
+            _transferFromExcluded(sender, recipient, amount);
         } else if (!_isExcluded[sender] && _isExcluded[recipient]) {
-            _transferToExcluded(sender, recipient, amount, isTaxFree);
+            _transferToExcluded(sender, recipient, amount);
         } else if (!_isExcluded[sender] && !_isExcluded[recipient]) {
-            _transferStandard(sender, recipient, amount, isTaxFree);
+            _transferStandard(sender, recipient, amount);
         } else if (_isExcluded[sender] && _isExcluded[recipient]) {
-            _transferBothExcluded(sender, recipient, amount, isTaxFree);
+            _transferBothExcluded(sender, recipient, amount);
         } else {
-            _transferStandard(sender, recipient, amount, isTaxFree);
+            _transferStandard(sender, recipient, amount);
         }
     }
 
-    function _transferStandard(address sender, address recipient, uint256 tAmount, bool taxFree) private {
-        if(taxFree){
-        _tOwned[sender] = _tOwned[sender].sub(tAmount);
-        _rOwned[sender] = _rOwned[sender].sub(rAmount);
-        _rOwned[recipient] = _rOwned[recipient].add(rTransferAmount);   
-        emit Transfer(sender, recipient, tTransferAmount);
-        } else {
+    function _transferStandard(address sender, address recipient, uint256 tAmount) private {
         uint256 currentRate =  _getRate();
         (uint256 rAmount, uint256 rTransferAmount, uint256 rFee, uint256 tTransferAmount, uint256 tFee, uint256 tBurn) = _getValues(tAmount);
         uint256 rBurn =  tBurn.mul(currentRate);
@@ -655,16 +674,9 @@ contract Rowket is Getters, Setters, Context, IBEP20, Ownable {
         _rOwned[recipient] = _rOwned[recipient].add(rTransferAmount);       
         _reflectFee(rFee, rBurn, tFee, tBurn);
         emit Transfer(sender, recipient, tTransferAmount);
-        }
     }
 
-    function _transferToExcluded(address sender, address recipient, uint256 tAmount, bool taxFree) private {
-        if(taxFree){
-        _tOwned[sender] = _tOwned[sender].sub(tAmount);
-        _rOwned[sender] = _rOwned[sender].sub(rAmount);
-        _rOwned[recipient] = _rOwned[recipient].add(rTransferAmount);   
-        emit Transfer(sender, recipient, tTransferAmount);
-        } else {
+    function _transferToExcluded(address sender, address recipient, uint256 tAmount) private {
         uint256 currentRate =  _getRate();
         (uint256 rAmount, uint256 rTransferAmount, uint256 rFee, uint256 tTransferAmount, uint256 tFee, uint256 tBurn) = _getValues(tAmount);
         uint256 rBurn =  tBurn.mul(currentRate);
@@ -673,16 +685,9 @@ contract Rowket is Getters, Setters, Context, IBEP20, Ownable {
         _rOwned[recipient] = _rOwned[recipient].add(rTransferAmount);           
         _reflectFee(rFee, rBurn, tFee, tBurn);
         emit Transfer(sender, recipient, tTransferAmount);
-        }
     }
 
-    function _transferFromExcluded(address sender, address recipient, uint256 tAmount, bool taxFree) private {
-        if(taxFree){
-        _tOwned[sender] = _tOwned[sender].sub(tAmount);
-        _rOwned[sender] = _rOwned[sender].sub(rAmount);
-        _rOwned[recipient] = _rOwned[recipient].add(rTransferAmount);   
-        emit Transfer(sender, recipient, tTransferAmount);
-        } else {
+    function _transferFromExcluded(address sender, address recipient, uint256 tAmount) private {
         uint256 currentRate =  _getRate();
         (uint256 rAmount, uint256 rTransferAmount, uint256 rFee, uint256 tTransferAmount, uint256 tFee, uint256 tBurn) = _getValues(tAmount);
         uint256 rBurn =  tBurn.mul(currentRate);
@@ -691,17 +696,9 @@ contract Rowket is Getters, Setters, Context, IBEP20, Ownable {
         _rOwned[recipient] = _rOwned[recipient].add(rTransferAmount);   
         _reflectFee(rFee, rBurn, tFee, tBurn);
         emit Transfer(sender, recipient, tTransferAmount);
-        }
-        
     }
 
-    function _transferBothExcluded(address sender, address recipient, uint256 tAmount, bool taxFree) private {
-        if(taxFree){
-        _tOwned[sender] = _tOwned[sender].sub(tAmount);
-        _rOwned[sender] = _rOwned[sender].sub(rAmount);
-        _rOwned[recipient] = _rOwned[recipient].add(rTransferAmount);   
-        emit Transfer(sender, recipient, tTransferAmount);
-        } else {
+    function _transferBothExcluded(address sender, address recipient, uint256 tAmount) private {
         uint256 currentRate =  _getRate();
         (uint256 rAmount, uint256 rTransferAmount, uint256 rFee, uint256 tTransferAmount, uint256 tFee, uint256 tBurn) = _getValues(tAmount);
         uint256 rBurn =  tBurn.mul(currentRate);
@@ -711,7 +708,6 @@ contract Rowket is Getters, Setters, Context, IBEP20, Ownable {
         _rOwned[recipient] = _rOwned[recipient].add(rTransferAmount);        
         _reflectFee(rFee, rBurn, tFee, tBurn);
         emit Transfer(sender, recipient, tTransferAmount);
-        }
     }
 
     function _reflectFee(uint256 rFee, uint256 rBurn, uint256 tFee, uint256 tBurn) private {
@@ -760,23 +756,26 @@ contract Rowket is Getters, Setters, Context, IBEP20, Ownable {
         return (rSupply, tSupply);
     }
     
-    function _setTaxFee(uint256 taxFee) external onlyOwner() {
-        require(taxFee >= 0 && taxFee <= 1000, 'Fee has to be between 0-10');
-        _TAX_FEE = taxFee;
-    }
 
     function _setBurnFee(uint256 burnFee) external onlyOwner() {
-        require(taxFee >= 0 && taxFee <= 1000, 'Fee has to be between 0-10');
+        require(burnFee >= 0 && burnFee <= 450, 'burnFee should be in 0 - 4.5');
         _BURN_FEE = burnFee;
     }
 
+    function _setTaxFee(uint256 taxFee) external onlyOwner() {
+        require(taxFee >= 0 && taxFee <= 450, 'burnFee should be in 0 - 4.5');
+        _TAX_FEE = taxFee;
+    }
 
-    function _getTaxFee() private view returns(uint256) {
+    function _getBurnFee() public view returns(uint256)  {
+        return _BURN_FEE;
+    }
+
+     function _getTaxFee() public view returns(uint256)  {
         return _TAX_FEE;
     }
 
     function _getMaxTxAmount() private view returns(uint256) {
         return _MAX_TX_SIZE;
     }
-    
 }
