@@ -496,7 +496,7 @@ contract Rowket is Context, IBEP20, Ownable {
     
     string  private constant _NAME = 'Rowket';
     string  private constant _SYMBOL = 'KET';
-    uint8   private constant _DECIMALS = 8;
+    uint8   private constant _DECIMALS = 18;
    
     uint256 private constant _MAX = ~uint256(0);
     uint256 private constant _DECIMALFACTOR = 10 ** uint256(_DECIMALS);
